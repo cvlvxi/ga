@@ -1,17 +1,21 @@
 // ts-check
+import { Vec3 } from "./vec3.js";
+
 
 /**
- * @template T
- * @implements {TreeNodeType<T>}
+ * @implements {ICoordNode}
  */
-export class TreeNode {
-
+export class CoordNode {
     /**
-     * @param {T} val
-     * @param {TreeNodeType<T> | null} [parent=null]
+     * @param {number} x
+     * @param {number} y
+     * @param {number} rotation
+     * @param {CoordNode | null} parent
      */
-    constructor(val, parent = null) {
-        this.val = val;
+    constructor(x, y, rotation, parent = null) {
+        this.x = x;
+        this.y = y;
+        this.rotation = rotation;
         this.parent = parent;
     }
 
@@ -19,9 +23,9 @@ export class TreeNode {
         return this.pathToRoot().length
     }
 
-    /** @type {TreeNodeType<T>['pathToRoot']} */
+    /** @type {ICoordNode['pathToRoot']} */
     pathToRoot() {
-        /** @type {TreeNodeType<T> | null} */
+        /** @type {ICoordNode | null} */
         let current = this;
         const path = [];
         while (current != null) {
@@ -31,14 +35,16 @@ export class TreeNode {
         return path;
     }
 
-    /** @type {TreeNodeType<T>['pathToNode']} */
+    // TODO: Handle null as base depth
+    /** @type {ICoordNode['pathToNode']} */
     pathToNode(otherNode) {
-        /** @type {TreeNodeType<T> | null} */
+        /** @type {ICoordNode | null} */
         let currA = this;
-        /** @type {TreeNodeType<T> | null} */
+        /** @type {ICoordNode | null} */
         let currB = otherNode;
-        const pathA = [];
-        const pathB = [];
+
+        const pathToInvert = [];
+        const pathToApply = [];
 
         while (currA != null && currB != null) {
             let currADepth = currA.depth();
@@ -52,7 +58,7 @@ export class TreeNode {
             } else {
                 // Found common ancestor
                 if (currA === currB) {
-                    pathA.push(currA)
+                    pathToInvert.push(currA)
                     break
                 } else {
                     addA = true;
@@ -60,40 +66,127 @@ export class TreeNode {
                 }
             }
             if (addA) {
-                pathA.push(currA)
+                pathToInvert.push(currA)
                 currA = currA.parent;
             }
             if (addB) {
-                pathB.push(currB)
+             pathToApply.push(currB)
                 currB = currB.parent;
             }
         }
-        return pathA.concat(pathB.reverse())
+        return {
+            pathToInvert,
+            pathToApply: pathToApply.reverse()
+        }
     }
 }
 
 
-// Test
-//                   0
-//                1     2
-//             3          7
-//           4   5
-//         6
-//
-const dogP = new TreeNode(0)
-const dog1 = new TreeNode(1, dogP)
-const dog2 = new TreeNode(2, dogP)
-const dog3 = new TreeNode(3, dog1)
-const dog4 = new TreeNode(4, dog3)
-const dog5 = new TreeNode(5, dog3)
-const dog6 = new TreeNode(6, dog4)
-const dog7 = new TreeNode(7, dog2)
-console.log('CHRIS: dogP', dogP);
-console.log('CHRIS: dog1', dog1);
-console.log('CHRIS: dog2', dog2);
-console.log('CHRIS: dog4.depth()', dog4.depth());
-console.log('CHRIS: dogP.depth()', dogP.depth());
+/** @implements {IVec2} */
+export class Vec2 {
 
-console.log('CHRIS: dog6.pathToNode(dog5', dog6.pathToNode(dog5).map(x => x.val))
-console.log('CHRIS: dog6.pathToNode(dog7', dog6.pathToNode(dog7).map(x => x.val))
+    /**
+     * @param {*} x
+     * @param {*} y
+     * @param {*} coordinates
+     */
+    constructor(x, y, coordinates=null) {
+        this.x = x;
+        this.y = y;
+        this.coordinates = coordinates;
+    }
 
+    /** @type IVec2['convert'] */
+    convert(otherCoordinates=null) {
+        const newVec = new Vec2(this.x, this.y, otherCoordinates);
+        const { pathToInvert, pathToApply } = this.coordinates.pathToNode(otherCoordinates)
+        // Order of Operations
+        // Invert: Add Translations Add Rotate
+        // Apply: Subtract Rotate Subtract Translations
+        for (const coordsToInvert of pathToInvert) {
+            // Complex numbers for rotation: (cos(45)x - ysin(45))  + i(xsin(45) + ycos(45))
+            const rotation = coordsToInvert.rotation
+            const { x, y } = newVec;
+            newVec.x = (Math.cos(rotation) * x) - (y * Math.sin(rotation));
+            newVec.y = (Math.sin(rotation) * x) + (y * Math.cos(rotation));
+
+            newVec.x = newVec.x + coordsToInvert.x
+            newVec.y = newVec.y + coordsToInvert.y
+        }
+        for (const coordsToApply of pathToApply) {
+            newVec.x = newVec.x - coordsToApply.x
+            newVec.y = newVec.y - coordsToApply.y
+
+            const { x, y } = newVec;
+            const rotation = -coordsToApply.rotation
+            newVec.x = (Math.cos(rotation) * x) - (y * Math.sin(rotation));
+            newVec.y = (Math.sin(rotation) * x) + (y * Math.cos(rotation));
+        }
+        return newVec
+    }
+
+}
+
+
+
+
+const PI = Math.PI;
+const TAU = 2*PI;
+const canvas = /** @type {HTMLCanvasElement} */(document.getElementById('dog'))
+const context = canvas.getContext('2d');
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+const Base = new CoordNode(0, 0, 0, null);
+// Rotated Coords
+const Coord2 = new CoordNode(canvas.width/2, canvas.height/2, TAU/8, Base)
+// const Coord2 = new CoordNode(canvas.width/2, canvas.height/2, 0, Base)
+const Coord3 = new CoordNode(100, 0, 0, Coord2)
+const Coord4 = new CoordNode(0, 0, TAU/8, Coord3)
+
+// X Arrow
+
+const moveToV = (v) => {
+    const baseV = v.convert(Base)
+    context?.moveTo(baseV.x, baseV.y)
+}
+
+const lineToV = (v) => {
+    const baseV = v.convert(Base)
+    context?.lineTo(baseV.x, baseV.y)
+}
+
+function drawArrow(c, color) {
+    const arrowLength = 100;
+    const arrowHeadLength = 30;
+    const arrowBodyXStart = new Vec2(0, 0, c)
+    const arrowBodyXEnd = new Vec2(arrowLength, 0, c)
+    const arrowHeadDown = new Vec2(arrowLength-arrowHeadLength, arrowHeadLength, c)
+    const arrowHeadUp = new Vec2(arrowLength-arrowHeadLength, -arrowHeadLength, c)
+    context.beginPath()
+        context.strokeStyle = color;
+        moveToV(arrowBodyXStart)
+        lineToV(arrowBodyXEnd)
+        lineToV(arrowHeadDown)
+        lineToV(arrowHeadUp)
+        lineToV(arrowBodyXEnd)
+    context?.stroke()
+}
+
+function draw() {
+    context?.clearRect(0, 0, canvas.width, canvas.height);
+    drawArrow(Base, "red")
+    drawArrow(Coord2, "green")
+    drawArrow(Coord3, "orange")
+    drawArrow(Coord4, "blue")
+}
+
+async function main() {
+    while (true) {
+        const time = await new Promise(requestAnimationFrame);
+        Coord2.rotation += 0.01;
+        draw()
+    }
+}
+
+main()

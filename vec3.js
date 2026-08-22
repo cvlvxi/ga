@@ -23,7 +23,6 @@ export class Vec3 {
     this.z = z;
   }
 
-
   clone() {
     return new Vec3(this.x, this.y, this.z);
   }
